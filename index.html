@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Class presentations</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#172c46;font:16px system-ui,sans-serif}main{max-width:1000px;margin:40px auto;padding:24px}h1{margin:0 0 8px}p{line-height:1.6}#list{display:grid;gap:18px;margin-top:24px}article{background:white;border:1px solid #d5dfeb;border-radius:12px;padding:22px}h2{font-size:20px;overflow-wrap:anywhere}button,.button{display:inline-block;background:#174d80;color:white;border:0;border-radius:6px;padding:10px 16px;font:inherit;text-decoration:none;cursor:pointer;margin:4px 8px 4px 0}textarea,input{width:100%;padding:12px;border:1px solid #adbccc;border-radius:6px;font:14px monospace}textarea{height:110px;resize:vertical;margin-top:8px}label{display:block;margin-top:15px}.error{color:#952727}#viewer{position:fixed;inset:0;display:flex;flex-direction:column;background:white}#viewer[hidden],main[hidden]{display:none}#slides{width:100%;flex:1;min-height:0;border:0}#bar{display:flex;align-items:center;gap:16px;padding:8px 12px;font-size:13px;border-top:1px solid #ddd}#bar span{flex:1}#bar a{color:#174d80}#status{overflow-wrap:anywhere}details{margin-top:28px}
+</style>
+</head>
+<body>
+<main id="catalog">
+<h1>Class presentations</h1>
+<p>Open a slideshow, or copy its embed code into the HTML editor of a Canvas page.</p>
+<p id="status" role="status">Finding PowerPoint presentations…</p>
+<div id="list"></div>
+<details><summary>Add a presentation by filename</summary>
+<p>If the list cannot load, enter the exact filename of a PowerPoint already uploaded alongside this index file.</p>
+<form id="manual"><label for="filename">PowerPoint filename</label><input id="filename" placeholder="Week-01.pptx" required><button>Generate embed code</button></form>
+</details>
+</main>
+<section id="viewer" hidden aria-label="Presentation viewer"><iframe id="slides" title="PowerPoint slideshow" allowfullscreen></iframe><div id="bar"><span id="decktitle"></span><a id="download">Download PowerPoint</a><a id="external" target="_blank" rel="noopener">Open viewer</a></div></section>
+<script>
+'use strict';
+// Upload this file and your .pptx files to the ROOT of your repository.
+// GitHub Pages: main branch, /(root). No edits needed on a standard github.io URL.
+const BRANCH = 'main';
+const base = new URL('./', location.href);
+const params = new URLSearchParams(location.search);
+const $ = id => document.getElementById(id);
+function validFile(name) {
+  return typeof name === 'string' && !/[\\/\x00-\x1f]/.test(name) && /\.pptx$/i.test(name);
+}
+function slideURL(name) {
+  const url = new URL('index.html', base);
+  url.searchParams.set('deck', name);
+  return url.href;
+}
+function embedCode(name) {
+  const iframe = document.createElement('iframe');
+  iframe.src = slideURL(name);
+  iframe.title = name.replace(/\.pptx$/i, '');
+  iframe.width = '100%';
+  iframe.height = '600';
+  iframe.style.border = '0';
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.setAttribute('loading', 'lazy');
+  return iframe.outerHTML;
+}
+function addCard(name) {
+  const card = document.createElement('article');
+  const title = document.createElement('h2'); title.textContent = name.replace(/\.pptx$/i, '');
+  const open = document.createElement('a'); open.className = 'button'; open.textContent = 'Open slideshow'; open.href = slideURL(name); open.target = '_blank'; open.rel = 'noopener';
+  const copy = document.createElement('button'); copy.textContent = 'Copy Canvas embed';
+  const label = document.createElement('label'); label.textContent = 'Canvas HTML embed code';
+  const code = document.createElement('textarea'); code.readOnly = true; code.value = embedCode(name); label.append(code);
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(code.value); copy.textContent = 'Copied'; }
+    catch { code.focus(); code.select(); copy.textContent = 'Selected: press Ctrl+C or Cmd+C'; }
+  };
+  card.append(title,open,copy,label); $('list').append(card);
+}
+async function start() {
+  const deck = params.get('deck');
+  if (deck !== null) {
+    if (!validFile(deck)) throw new Error('Use a .pptx filename from the repository root, for example Week-01.pptx.');
+    const file = new URL(encodeURIComponent(deck), base);
+    const viewer = 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(file.href);
+    $('catalog').hidden = true; $('viewer').hidden = false;
+    document.title = deck; $('decktitle').textContent = deck;
+    $('download').href = file.href; $('external').href = viewer;
+    // Direct embeds do not call the GitHub API. Only the teacher's catalogue does.
+    $('slides').src = viewer;
+    return;
+  }
+  const owner = location.hostname.endsWith('.github.io') ? location.hostname.slice(0,-10) : '';
+  const repo = decodeURIComponent(base.pathname.split('/').filter(Boolean)[0] || '');
+  if (!owner || !repo) throw new Error('Publish this file on GitHub Pages first. Open the github.io website, not the github.com repository or a downloaded file.');
+  const response = await fetch('https://api.github.com/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/contents/?ref=' + encodeURIComponent(BRANCH));
+  if (!response.ok) throw new Error('The presentation list could not load (GitHub ' + response.status + '). Check that the repository is public and uses main. If GitHub is temporarily limiting requests, use “Add a presentation by filename” below.');
+  const entries = await response.json();
+  const files = entries.filter(x => x.type === 'file' && validFile(x.name)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+  files.forEach(x => addCard(x.name));
+  $('status').textContent = files.length ? files.length + ' presentation(s). Newly uploaded files may take a few minutes to appear on the website.' : 'No presentations yet. Upload .pptx files into the same repository folder as index.html, then refresh this page.';
+}
+$('manual').onsubmit = event => {
+  event.preventDefault(); const name = $('filename').value.trim();
+  if (!validFile(name)) { $('status').textContent = 'Enter a .pptx filename without folder paths.'; return; }
+  addCard(name); $('filename').value = '';
+};
+start().catch(error => { $('status').textContent = error.message; $('status').className = 'error'; });
+</script>
+</body></html>
