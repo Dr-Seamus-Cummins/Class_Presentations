@@ -72,7 +72,7 @@ async function start() {
     $('slides').src = viewer;
     return;
   }
-  const owner = location.hostname.endsWith('.github.com') ? location.hostname.slice(0,-10) : '';
+  const owner = location.hostname.endsWith('.github.io') ? location.hostname.slice(0,-10) : '';
   const repo = decodeURIComponent(base.pathname.split('/').filter(Boolean)[0] || '');
   if (!owner || !repo) throw new Error('Publish this file on GitHub Pages first. Open the github.io website, not the github.com repository or a downloaded file.');
   const response = await fetch('https://api.github.com/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/contents/?ref=' + encodeURIComponent(BRANCH));
